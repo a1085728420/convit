@@ -1,6 +1,8 @@
 # mindcv_convit
 This repo is to implement convit using MindSpore
 
+mindcv: [https://github.com/mindlab-ai/mindcv](https://github.com/mindlab-ai/mindcv)
+
 # Finish
 convit.py -> 能够跑通main测试函数
 
