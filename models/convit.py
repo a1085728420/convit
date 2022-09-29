@@ -8,6 +8,7 @@ import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.ops as ops
+from mindspore.ops import constexpr
 from mindspore import Parameter, Tensor
 import mindspore.common.initializer as init
 
@@ -73,13 +74,11 @@ class GPSA(nn.Cell):
         self.pos_proj = nn.Dense(in_channels=3, out_channels=num_heads)
         self.proj_drop = nn.Dropout(keep_prob=1.0 - proj_drop)
         self.gating_param = Parameter(ops.ones((num_heads), ms.float32))
-        self.rel_indices = ops.Zeros()((1, 1, 1, 3), ms.float32)
+        self.rel_indices = self.get_rel_indices()
         self.local_init(locality_strength=locality_strength)
 
     def construct(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
-        if self.rel_indices is None or self.rel_indices.shape[1] != N:
-            self.rel_indices = self.get_rel_indices(N)
         attn = self.get_attention(x)
         v = self.v(x)
         v = ops.reshape(v, (B, N, self.num_heads, C // self.num_heads))
@@ -125,7 +124,8 @@ class GPSA(nn.Cell):
         pos_weight_data = pos_weight_data * locality_strength
         self.pos_proj.weight.set_data(self.pos_proj.weight.data)
 
-    def get_rel_indices(self, num_patches: int) -> Tensor:
+    @constexpr
+    def get_rel_indices(num_patches: int = 196) -> Tensor:
         img_size = int(num_patches**.5)
         rel_indices = ops.Zeros()((1, num_patches, num_patches, 3), ms.float32)
         ind = ms.numpy.arange(img_size).view(1, -1) - ms.numpy.arange(img_size).view(-1, 1)

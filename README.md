@@ -1,10 +1,8 @@
-# mindcv_convit
+# convit
 This repo is to implement convit using MindSpore
 
-mindcv: [https://github.com/mindlab-ai/mindcv](https://github.com/mindlab-ai/mindcv)
-
 # Finish
-convit.py -> 能够跑通main测试函数
+convit.py -> 能够跑通main测试函数，推理结果与pytorch结果一致
 
 # TO DO
 1、model.train 方式训练
