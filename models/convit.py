@@ -201,8 +201,7 @@ class Block(nn.Cell):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else Identity()
         self.norm2 = nn.LayerNorm((dim,))
         mlp_hidden_dim = int(dim * mlp_ratio)
-        # TODO: 使用原mindcv中MLP
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=nn.GELU, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, drop=drop)
 
     def construct(self, x: Tensor) -> Tensor:
         x = x + self.drop_path(self.attn(self.norm1(x)))
@@ -366,7 +365,7 @@ def convit_small_plus(pretrained: bool = False, num_classes: int = 1000, in_chan
     """Get ConViT small+ model
     Refer to the base class "models.ConViT" for more details.
     """
-    default_cfg = default_cfgs['convit_small_plus']]
+    default_cfg = default_cfgs['convit_small_plus']
     model = ConViT(in_channels=in_channels, num_classes=num_classes,
                    num_heads=9, embed_dim=576, **kwargs)
 
