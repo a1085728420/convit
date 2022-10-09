@@ -252,7 +252,6 @@ class ConViT(nn.Cell):
         self.local_up_to_layer = local_up_to_layer
         self.use_pos_embed = use_pos_embed
 
-        # TODO: 这里使用的是原mindcv中PatchEmbed
         self.patch_embed = PatchEmbed(
             image_size=image_size, patch_size=patch_size, in_chans=in_channels, embed_dim=embed_dim)
         self.num_patches = self.patch_embed.num_patches
