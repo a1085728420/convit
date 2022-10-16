@@ -35,6 +35,7 @@ def _cfg(url='', **kwargs):
     return {
         'url': url,
         'num_classes': 1000,
+        'input_size': (3, 224, 224),
         'first_conv': 'patch_embed.proj', 'classifier': 'classifier',
         **kwargs
     }
@@ -48,6 +49,21 @@ default_cfgs = {
     'convit_base': _cfg(url=''),
     'convit_base_plus': _cfg(url='')
 }
+
+
+@constexpr
+def get_rel_indices(num_patches: int = 196) -> Tensor:
+    img_size = int(num_patches**.5)
+    rel_indices = ops.Zeros()((1, num_patches, num_patches, 3), ms.float32)
+    ind = ms.numpy.arange(img_size).view(1, -1) - ms.numpy.arange(img_size).view(-1, 1)
+    indx = ms.numpy.tile(ind, (img_size, img_size))
+    indy_ = ops.repeat_elements(ind, rep=img_size, axis=0)
+    indy = ops.repeat_elements(indy_, rep=img_size, axis=1)
+    indd = indx**2 + indy**2
+    rel_indices[:, :, :, 2] = ops.expand_dims(indd, 0)
+    rel_indices[:, :, :, 1] = ops.expand_dims(indy, 0)
+    rel_indices[:, :, :, 0] = ops.expand_dims(indx, 0)
+    return rel_indices
 
 
 class GPSA(nn.Cell):
@@ -66,7 +82,8 @@ class GPSA(nn.Cell):
         head_dim = dim // num_heads
         self.scale = head_dim ** -0.5
 
-        self.qk = nn.Dense(in_channels=dim, out_channels=dim * 2, has_bias=qkv_bias)
+        self.q = nn.Dense(in_channels=dim, out_channels=dim, has_bias=qkv_bias)
+        self.k = nn.Dense(in_channels=dim, out_channels=dim, has_bias=qkv_bias)
         self.v = nn.Dense(in_channels=dim, out_channels=dim, has_bias=qkv_bias)
 
         self.attn_drop = nn.Dropout(keep_prob=1.0 - attn_drop)
@@ -74,16 +91,17 @@ class GPSA(nn.Cell):
         self.pos_proj = nn.Dense(in_channels=3, out_channels=num_heads)
         self.proj_drop = nn.Dropout(keep_prob=1.0 - proj_drop)
         self.gating_param = Parameter(ops.ones((num_heads), ms.float32))
-        self.rel_indices = self.get_rel_indices()
+        self.softmax = nn.Softmax(axis=-1)
+        self.batch_matmul = ops.BatchMatMul()
+        self.rel_indices = get_rel_indices()
         self.local_init(locality_strength=locality_strength)
 
     def construct(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
         attn = self.get_attention(x)
-        v = self.v(x)
-        v = ops.reshape(v, (B, N, self.num_heads, C // self.num_heads))
+        v = ops.reshape(self.v(x), (B, N, self.num_heads, C // self.num_heads))
         v = ops.transpose(v, (0, 2, 1, 3))
-        x = ops.transpose(ops.BatchMatMul()(attn, v), (0, 2, 1, 3))
+        x = ops.transpose(self.batch_matmul(attn, v), (0, 2, 1, 3))
         x = ops.reshape(x, (B, N, C))
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -91,20 +109,22 @@ class GPSA(nn.Cell):
 
     def get_attention(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
-        qk = self.qk(x)
-        qk = ops.reshape(qk, (B, N, 2, self.num_heads, C // self.num_heads))
-        qk = ops.transpose(qk, (2, 0, 3, 1, 4))
-        q, k = qk[0], qk[1]
+        q = ops.reshape(self.q(x), (B, N, self.num_heads, C // self.num_heads))
+        q = ops.transpose(q, (0, 2, 1, 3))
+        k = ops.reshape(self.k(x), (B, N, self.num_heads, C // self.num_heads))
+        k = ops.transpose(k, (0, 2, 3, 1))
+
         pos_score = ops.tile(self.rel_indices, (B, 1, 1, 1))
         pos_score = self.pos_proj(pos_score)
         pos_score = ops.transpose(pos_score, (0, 3, 1, 2))
-        patch_score = ops.BatchMatMul(transpose_b=True)(q, k) * self.scale
-        patch_score = nn.Softmax(axis=-1)(patch_score)
-        pos_score = nn.Softmax(axis=-1)(pos_score)
+        pos_score = self.softmax(pos_score)
+        patch_score = self.batch_matmul(q, k)
+        patch_score = ops.mul(patch_score, self.scale)
+        patch_score = self.softmax(patch_score)        
 
         gating = self.gating_param.view((1, -1, 1, 1))
-        attn = (1.-ops.Sigmoid()(gating)) * patch_score + ops.Sigmoid()(gating) * pos_score
-        attn /= ops.expand_dims(attn.sum(axis=-1), -1)
+        gating = ops.Sigmoid()(gating)
+        attn = (1.-gating) * patch_score + gating * pos_score
         attn = self.attn_drop(attn)
         return attn
 
@@ -124,20 +144,6 @@ class GPSA(nn.Cell):
         pos_weight_data = pos_weight_data * locality_strength
         self.pos_proj.weight.set_data(self.pos_proj.weight.data)
 
-    @constexpr
-    def get_rel_indices(num_patches: int = 196) -> Tensor:
-        img_size = int(num_patches**.5)
-        rel_indices = ops.Zeros()((1, num_patches, num_patches, 3), ms.float32)
-        ind = ms.numpy.arange(img_size).view(1, -1) - ms.numpy.arange(img_size).view(-1, 1)
-        indx = ms.numpy.tile(ind, (img_size, img_size))
-        indy_ = ops.repeat_elements(ind, rep=img_size, axis=0)
-        indy = ops.repeat_elements(indy_, rep=img_size, axis=1)
-        indd = indx**2 + indy**2
-        rel_indices[:, :, :, 2] = ops.expand_dims(indd, 0)
-        rel_indices[:, :, :, 1] = ops.expand_dims(indy, 0)
-        rel_indices[:, :, :, 0] = ops.expand_dims(indx, 0)
-        return rel_indices
-
 
 class MHSA(nn.Cell):
 
@@ -153,23 +159,29 @@ class MHSA(nn.Cell):
         head_dim = dim // num_heads
         self.scale = head_dim ** -0.5
 
-        self.qkv = nn.Dense(in_channels=dim, out_channels=dim * 3, has_bias=qkv_bias)
+        self.q = nn.Dense(in_channels=dim, out_channels=dim, has_bias=qkv_bias)
+        self.k = nn.Dense(in_channels=dim, out_channels=dim, has_bias=qkv_bias)
+        self.v = nn.Dense(in_channels=dim, out_channels=dim, has_bias=qkv_bias)
         self.attn_drop = nn.Dropout(keep_prob=1.0 - attn_drop)
         self.proj = nn.Dense(in_channels=dim, out_channels=dim)
         self.proj_drop = nn.Dropout(keep_prob=1.0 - proj_drop)
+        self.softmax = nn.Softmax(axis=-1)
+        self.batch_matmul = ops.BatchMatMul()
 
     def construct(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
-        qkv = self.qkv(x)
-        qkv = ops.reshape(qkv, (B, N, 3, self.num_heads, C // self.num_heads))
-        qkv = ops.transpose(qkv, (2, 0, 3, 1, 4))
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q = ops.reshape(self.q(x), (B, N, self.num_heads, C // self.num_heads))
+        q = ops.transpose(q, (0, 2, 1, 3))
+        k = ops.reshape(self.k(x), (B, N, self.num_heads, C // self.num_heads))
+        k = ops.transpose(k, (0, 2, 3, 1))
+        v = ops.reshape(self.v(x), (B, N, self.num_heads, C // self.num_heads))
+        v = ops.transpose(v, (0, 2, 1, 3))
 
-        attn = ops.BatchMatMul(transpose_b=True)(q, k) * self.scale
-        attn = nn.Softmax(axis=-1)(attn)
+        attn = self.batch_matmul(q, k) * self.scale
+        attn = self.softmax(attn)
         attn = self.attn_drop(attn)
 
-        x = ops.transpose(ops.BatchMatMul()(attn, v), (0, 2, 1, 3))
+        x = ops.transpose(self.batch_matmul(attn, v), (0, 2, 1, 3))
         x = ops.reshape(x, (B, N, C))
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -187,7 +199,7 @@ class Block(nn.Cell):
                  drop: float = 0., 
                  attn_drop: float = 0.,
                  drop_path: float = 0., 
-                 use_gpsa=True, 
+                 use_gpsa: bool = True, 
                  **kwargs) -> None:
         super().__init__()
 
@@ -201,7 +213,7 @@ class Block(nn.Cell):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else Identity()
         self.norm2 = nn.LayerNorm((dim,))
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer = nn.GELU, drop=drop)
 
     def construct(self, x: Tensor) -> Tensor:
         x = x + self.drop_path(self.attn(self.norm1(x)))
@@ -299,7 +311,7 @@ class ConViT(nn.Cell):
         cls_tokens = ops.tile(self.cls_token, (x.shape[0], 1, 1))
         for u,blk in enumerate(self.blocks):
             if u == self.local_up_to_layer :
-                x = ops.Concat(1)((cls_tokens, x))
+                x = ops.concat((cls_tokens, x), 1)
             x = blk(x)
         x = self.norm(x)
         return x[:, 0]
@@ -315,7 +327,7 @@ class ConViT(nn.Cell):
 
 
 @register_model
-def convit_tiny(pretrained: bool = False, num_classes: int = 1000, in_channels=3, **kwargs) -> ConViT:
+def convit_tiny(pretrained: bool = False, num_classes: int = 1000, in_channels: int = 3, **kwargs) -> ConViT:
     """Get ConViT tiny model
     Refer to the base class "models.ConViT" for more details.
     """
@@ -330,7 +342,7 @@ def convit_tiny(pretrained: bool = False, num_classes: int = 1000, in_channels=3
 
 
 @register_model
-def convit_tiny_plus(pretrained: bool = False, num_classes: int = 1000, in_channels=3, **kwargs) -> ConViT:
+def convit_tiny_plus(pretrained: bool = False, num_classes: int = 1000, in_channels: int = 3, **kwargs) -> ConViT:
     """Get ConViT tiny+ model
     Refer to the base class "models.ConViT" for more details.
     """
@@ -345,7 +357,7 @@ def convit_tiny_plus(pretrained: bool = False, num_classes: int = 1000, in_chann
 
 
 @register_model
-def convit_small(pretrained: bool = False, num_classes: int = 1000, in_channels=3, **kwargs) -> ConViT:
+def convit_small(pretrained: bool = False, num_classes: int = 1000, in_channels: int = 3, **kwargs) -> ConViT:
     """Get ConViT small model
     Refer to the base class "models.ConViT" for more details.
     """
@@ -360,7 +372,7 @@ def convit_small(pretrained: bool = False, num_classes: int = 1000, in_channels=
 
 
 @register_model
-def convit_small_plus(pretrained: bool = False, num_classes: int = 1000, in_channels=3, **kwargs) -> ConViT:
+def convit_small_plus(pretrained: bool = False, num_classes: int = 1000, in_channels: int = 3, **kwargs) -> ConViT:
     """Get ConViT small+ model
     Refer to the base class "models.ConViT" for more details.
     """
@@ -375,7 +387,7 @@ def convit_small_plus(pretrained: bool = False, num_classes: int = 1000, in_chan
 
 
 @register_model
-def convit_base(pretrained: bool = False, num_classes: int = 1000, in_channels=3, **kwargs) -> ConViT:
+def convit_base(pretrained: bool = False, num_classes: int = 1000, in_channels: int = 3, **kwargs) -> ConViT:
     """Get ConViT base model
     Refer to the base class "models.ConViT" for more details.
     """
@@ -390,7 +402,7 @@ def convit_base(pretrained: bool = False, num_classes: int = 1000, in_channels=3
 
 
 @register_model
-def convit_base_plus(pretrained: bool = False, num_classes: int = 1000, in_channels=3, **kwargs) -> ConViT:
+def convit_base_plus(pretrained: bool = False, num_classes: int = 1000, in_channels: int = 3, **kwargs) -> ConViT:
     """Get ConViT base+ model
     Refer to the base class "models.ConViT" for more details.
     """

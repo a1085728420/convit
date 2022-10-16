@@ -4,7 +4,7 @@ This repo is to implement convit using MindSpore
 
 # Finish
 
-convit.py -> 能够跑通main测试函数，推理结果与pytorch结果一致
+train.py正在训练
 
 # TO DO
 
@@ -15,6 +15,10 @@ convit.py -> 能够跑通main测试函数，推理结果与pytorch结果一致
 3、差异文档分析编写
 
 # 更新日志
+
+## 2022/10/16
+
+为加快训练速度，对代码进行部分修改
 
 ## 2022/10/9:
 
