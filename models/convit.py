@@ -310,7 +310,8 @@ class ConViT(nn.Cell):
         x = self.pos_drop(x)
         cls_tokens = ops.tile(self.cls_token, (x.shape[0], 1, 1))
         for u,blk in enumerate(self.blocks):
-            if u == self.local_up_to_layer :
+            if u == self.local_up_to_layer:
+                x = ops.Cast()(x, cls_tokens.dtype)
                 x = ops.concat((cls_tokens, x), 1)
             x = blk(x)
         x = self.norm(x)

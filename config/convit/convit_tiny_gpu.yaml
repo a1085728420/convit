@@ -20,10 +20,10 @@ num_parallel_workers: 8
 
 # dataset config
 dataset: 'imagenet'
-data_dir: ''
+data_dir: '/data1/dataset/imagenet'
 shuffle: True
 dataset_download: False
-batch_size: 32
+batch_size: 64
 drop_remainder: True
 
 # Augmentation config
@@ -43,7 +43,7 @@ model: 'convit_tiny'
 num_classes: 1000
 pretrained: False
 ckpt_path: ''
-keep_checkpoint_max: 10
+keep_checkpoint_max: 5
 ckpt_save_dir: './'
 epoch_size: 300
 dataset_sink_mode: True
@@ -54,7 +54,7 @@ loss: 'CE'
 label_smoothing: 0.1
 
 # lr scheduler config
-scheduler: 'warmup_cosine_decay_lr'
+scheduler: 'warmup_cosine_decay'
 lr: 0.0005
 min_lr: 0.00001
 warmup_epochs: 5
