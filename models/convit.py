@@ -73,8 +73,7 @@ class GPSA(nn.Cell):
                  num_heads: int, 
                  qkv_bias: bool = False, 
                  attn_drop: float = 0., 
-                 proj_drop: float = 0.,
-                 locality_strength: float = 1.) -> None:
+                 proj_drop: float = 0.) -> None:
         super().__init__()
 
         self.dim = dim
@@ -94,7 +93,6 @@ class GPSA(nn.Cell):
         self.softmax = nn.Softmax(axis=-1)
         self.batch_matmul = ops.BatchMatMul()
         self.rel_indices = get_rel_indices()
-        self.local_init(locality_strength=locality_strength)
 
     def construct(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
@@ -114,35 +112,18 @@ class GPSA(nn.Cell):
         k = ops.reshape(self.k(x), (B, N, self.num_heads, C // self.num_heads))
         k = ops.transpose(k, (0, 2, 3, 1))
 
-        pos_score = ops.tile(self.rel_indices, (B, 1, 1, 1))
-        pos_score = self.pos_proj(pos_score)
+        pos_score = self.pos_proj(self.rel_indices)
         pos_score = ops.transpose(pos_score, (0, 3, 1, 2))
         pos_score = self.softmax(pos_score)
         patch_score = self.batch_matmul(q, k)
         patch_score = ops.mul(patch_score, self.scale)
         patch_score = self.softmax(patch_score)        
 
-        gating = self.gating_param.view((1, -1, 1, 1))
+        gating = ops.reshape(self.gating_param, (1, -1, 1, 1))
         gating = ops.Sigmoid()(gating)
         attn = (1.-gating) * patch_score + gating * pos_score
         attn = self.attn_drop(attn)
         return attn
-
-    def local_init(self, locality_strength: float) -> None:
-        self.v.weight.set_data(ops.eye(self.dim, self.dim, ms.float32), slice_shape=True)
-        locality_distance = 1
-        kernel_size = int(self.num_heads**.5)
-        center = (kernel_size - 1) / 2 if kernel_size % 2 == 0 else kernel_size // 2
-
-        pos_weight_data = self.pos_proj.weight.data
-        for h1 in range(kernel_size):
-            for h2 in range(kernel_size):
-                position = h1+kernel_size*h2
-                pos_weight_data[position,2] = -1
-                pos_weight_data[position,1] = 2*(h1-center)*locality_distance
-                pos_weight_data[position,0] = 2*(h2-center)*locality_distance
-        pos_weight_data = pos_weight_data * locality_strength
-        self.pos_proj.weight.set_data(self.pos_proj.weight.data)
 
 
 class MHSA(nn.Cell):
@@ -177,7 +158,8 @@ class MHSA(nn.Cell):
         v = ops.reshape(self.v(x), (B, N, self.num_heads, C // self.num_heads))
         v = ops.transpose(v, (0, 2, 1, 3))
 
-        attn = self.batch_matmul(q, k) * self.scale
+        attn = self.batch_matmul(q, k)
+        attn = ops.mul(attn, self.scale)
         attn = self.softmax(attn)
         attn = self.attn_drop(attn)
 
@@ -256,7 +238,6 @@ class ConViT(nn.Cell):
                  mlp_ratio: float = 4., 
                  qkv_bias: bool = False, 
                  attn_drop_rate: float = 0.,
-                 locality_strength: float = 1., 
                  local_up_to_layer: int = 10, 
                  use_pos_embed: bool = True) -> None:
         super().__init__()
@@ -280,7 +261,7 @@ class ConViT(nn.Cell):
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, 
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], 
-                use_gpsa=True, locality_strength=locality_strength)
+                use_gpsa=True)
             if i<local_up_to_layer else
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, 
