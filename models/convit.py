@@ -239,11 +239,15 @@ class ConViT(nn.Cell):
                  qkv_bias: bool = False, 
                  attn_drop_rate: float = 0.,
                  local_up_to_layer: int = 10, 
-                 use_pos_embed: bool = True) -> None:
+                 use_pos_embed: bool = True,
+                 locality_strength: float = 1.) -> None:
         super().__init__()
 
         self.local_up_to_layer = local_up_to_layer
         self.use_pos_embed = use_pos_embed
+        self.num_heads = num_heads
+        self.locality_strength = locality_strength
+        self.embed_dim = embed_dim
 
         self.patch_embed = PatchEmbed(
             image_size=image_size, patch_size=patch_size, in_chans=in_channels, embed_dim=embed_dim)
@@ -283,6 +287,21 @@ class ConViT(nn.Cell):
             elif isinstance(cell, nn.LayerNorm):
                 cell.gamma.set_data(init.initializer(init.Constant(1), cell.gamma.shape))
                 cell.beta.set_data(init.initializer(init.Constant(0), cell.beta.shape))
+        # local init
+        for i in range(self.local_up_to_layer):
+            self.blocks[i].attn.v.weight.set_data(ops.eye(self.embed_dim, self.embed_dim, ms.float32), slice_shape=True)
+            locality_distance = 1
+            kernel_size = int(self.num_heads**.5)
+            center = (kernel_size - 1) / 2 if kernel_size % 2 == 0 else kernel_size // 2
+            pos_weight_data = self.blocks[i].attn.pos_proj.weight.data
+            for h1 in range(kernel_size):
+                for h2 in range(kernel_size):
+                    position = h1+kernel_size*h2
+                    pos_weight_data[position,2] = -1
+                    pos_weight_data[position,1] = 2*(h1-center)*locality_distance
+                    pos_weight_data[position,0] = 2*(h2-center)*locality_distance
+            pos_weight_data = pos_weight_data * self.locality_strength
+            self.blocks[i].attn.pos_proj.weight.set_data(pos_weight_data)
 
     def forward_features(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
