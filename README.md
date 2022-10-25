@@ -16,6 +16,10 @@ train.py正在训练
 
 # 更新日志
 
+## 2022/10/25
+
+convit_tiny_gpu：top1:0.734, top5: 0.915
+
 ## 2022/10/20
 
 v4.2：增加local_init

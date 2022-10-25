@@ -1,0 +1,4 @@
+(wjw) mindspore@ubuntubixing:/data1/wkj/v4.2$ python validate_with_func.py -c configs/convit/convit_tiny_gpu.yaml --ckpt_path=convit_tiny_best.ckpt
+Testing...
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 391/391 [01:50<00:00,  3.53it/s]
+Acc@1: 73.4%, Acc@5: 91.5%, Avg loss: 1.989130
