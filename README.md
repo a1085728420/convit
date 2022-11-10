@@ -16,6 +16,13 @@ train.py正在训练
 
 # 更新日志
 
+## 2022/11/10
+
+v4.6: 使用了cutmix，convit_tiny_ascend精度达标
+```
+convit_tiny_ascend：top1:0.737, top5: 0.917
+```
+
 ## 2022/10/27
 
 v4.4：主要就是修改了drop_path，使其适配ascend
