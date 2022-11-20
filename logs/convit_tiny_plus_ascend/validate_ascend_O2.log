@@ -1,0 +1,12 @@
+(ci3.7) [root@localhost v4.6]# python ./validate.py -c ./convit_tiny_plus_ascend.yaml
+WARNING: num eval samples 50000 can not be divided by the input batch size 256. The batch size is refined to 250
+[WARNING] PRE_ACT(2408713,ffff814f47d0,python):2022-11-20-09:33:10.371.673 [mindspore/ccsrc/plugin/device/ascend/optimizer/format_type/deal_ref_output.cc:109] AddAdditionalToRefOutput] ref op origin node is not parameter
+[WARNING] PRE_ACT(2408713,ffff814f47d0,python):2022-11-20-09:33:10.410.457 [mindspore/ccsrc/plugin/device/ascend/optimizer/format_type/deal_ref_output.cc:109] AddAdditionalToRefOutput] ref op origin node is not parameter
+[WARNING] PRE_ACT(2408713,ffff814f47d0,python):2022-11-20-09:33:12.053.659 [mindspore/ccsrc/plugin/device/ascend/optimizer/format_type/deal_ref_output.cc:109] AddAdditionalToRefOutput] ref op origin node is not parameter
+[WARNING] PRE_ACT(2408713,ffff814f47d0,python):2022-11-20-09:33:12.072.779 [mindspore/ccsrc/plugin/device/ascend/optimizer/format_type/deal_ref_output.cc:109] AddAdditionalToRefOutput] ref op origin node is not parameter
+Model: convit_tiny_plus
+Num batches: 200
+Start validating...
+100/200
+200/200
+{'Top_1_Accuracy': 0.76996, 'Top_5_Accuracy': 0.93596, 'loss': 1.8451650160551072}

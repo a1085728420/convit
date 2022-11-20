@@ -16,6 +16,13 @@ train.py正在训练
 
 # 更新日志
 
+## 2022/11/20
+
+在验证时修改了crop_pct，convit_tiny_plus_ascend精度达标
+```
+convit_tiny_plus_ascend：top1:0.770, top5: 0.936
+```
+
 ## 2022/11/10
 
 v4.6: 使用了cutmix，convit_tiny_ascend精度达标
