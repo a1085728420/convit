@@ -16,6 +16,14 @@ train.py正在训练
 
 # 更新日志
 
+## 2022/11/30
+
+convit_small_ascend，top1精度高出论文0.3%，top5精度低于论文0.1%
+
+```
+convit_small_ascend：top1:0.816, top5: 0.956
+```
+
 ## 2022/11/20
 
 在验证时修改了crop_pct，convit_tiny_plus_ascend精度达标
