@@ -16,6 +16,12 @@ train.py正在训练
 
 # 更新日志
 
+## 2022/12/13
+
+因时间关系，剩余三个规格将以1%以内误差进行验收
+
+各规格日志已上传，ckpt文件较大，通过[阿里云盘链接](https://www.aliyundrive.com/s/whVSbKocNKq)分享。
+
 ## 2022/11/30
 
 convit_small_ascend，top1精度高出论文0.3%，top5精度低于论文0.1%

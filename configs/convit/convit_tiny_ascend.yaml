@@ -20,7 +20,7 @@ num_parallel_workers: 8
 
 # dataset config
 dataset: 'imagenet'
-data_dir: './imagenet/'
+data_dir: ''
 shuffle: True
 dataset_download: False
 batch_size: 256
@@ -32,7 +32,6 @@ scale: [0.08, 1.0]
 ratio: [0.75, 1.333]
 hflip: 0.5
 interpolation: 'bicubic'
-# auto_augment: 'randaug-m9-mstd0.5-inc1'
 re_prob: 0.25
 mixup: 0.2
 cutmix: 1.0
@@ -46,7 +45,7 @@ num_classes: 1000
 pretrained: False
 ckpt_path: ''
 keep_checkpoint_max: 10
-ckpt_save_dir: './ckpt/'
+ckpt_save_dir: './ckpt'
 epoch_size: 300
 dataset_sink_mode: True
 amp_level: 'O2'
@@ -56,7 +55,7 @@ loss: 'CE'
 label_smoothing: 0.1
 
 # lr scheduler config
-scheduler: 'warmup_cosine_decay'
+scheduler: 'cosine_decay'
 lr: 0.00072
 min_lr: 0.000001
 warmup_epochs: 5
